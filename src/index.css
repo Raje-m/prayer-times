@@ -1,0 +1,81 @@
+@import "tailwindcss";
+@theme {
+  /* إضافة لون أساسي برقم درجة واحدة */
+  --color-primary: #0B1328;
+  --color-secondary: #35D398;
+
+
+}
+/* الألوان الافتراضية للتطبيق */
+:root {
+  --bg-main: #060c1e;
+  --bg-card: #09132d;
+  --bg-card-secondary: #081024;
+  --bg-header: #091e57;
+  --border-gold: rgba(252, 211, 77, 0.2);
+}
+
+/* الوضع الأسود الصرف الشامل للشاشات OLED */
+.oled-theme {
+  --bg-main: #000000 !important;
+  --bg-card: #030303 !important;
+  --bg-card-secondary: #080808 !important;
+  --bg-header: #050505 !important;
+  --border-gold: rgba(252, 211, 77, 0.35) !important;
+}
+
+/* تطبيق المتغيرات على الخلفيات والتدرجات عالمياً */
+.oled-theme body,
+.oled-theme #root {
+  background-color: var(--bg-main) !important;
+}
+
+/* إجبار كافة كروت المشروع والأقسام على الالتزام باللون الأسود الصرف */
+.oled-theme div[class*="bg-"],
+.oled-theme header,
+.oled-theme section,
+.oled-theme article {
+  background-image: none !important;
+  /* إلغاء التدرجات اللونية الزرقاء */
+}
+
+.oled-theme .bg-\[\#060c1e\],
+.oled-theme .bg-\[\#09132d\],
+.oled-theme .bg-\[\#081024\],
+.oled-theme .bg-\[\#091e57\],
+.oled-theme .bg-\[\#101b3b\],
+.oled-theme [class*="from-\[\#101b3b\]"],
+.oled-theme [class*="via-\[\#09132d\]"],
+.oled-theme [class*="to-\[\#060c1e\]"] {
+  background-color: var(--bg-card) !important;
+  background-image: none !important;
+  border-color: var(--border-gold) !important;
+}
+
+body.oled-theme,
+html.oled-theme {
+  background-color: #000000 !important;
+  color: #fbbf24 !important; /* الحفاظ على لون النصوص الذهبي المميز */
+}
+
+/* إجبار كافة الصناديق، الكروت، الأقسام، والهيدر على أخذ اللون الأسود الخالص وإلغاء التدرجات الزرقاء */
+body.oled-theme div,
+body.oled-theme section,
+body.oled-theme header,
+body.oled-theme nav,
+body.oled-theme aside,
+body.oled-theme article {
+  background-color: #030303 !important;
+  background-image: none !important;
+  border-color: rgba(251, 191, 36, 0.25) !important;
+}
+
+/* استثناء الأزرار والعناصر التفاعلية البارزة لتظل واضحة بجمالية هادئة */
+body.oled-theme button {
+  background-color: #080808 !important;
+  border-color: rgba(251, 191, 36, 0.4) !important;
+}
+
+body.oled-theme button:hover {
+  background-color: #121212 !important;
+}
