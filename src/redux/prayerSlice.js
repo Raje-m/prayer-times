@@ -1,5 +1,46 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
+// دالة تنظيف تلقائية لحذف مواقيت الأيام السابقة مع الحفاظ على المدينة المختارة
+const cleanOldPrayerCache = () => {
+  try {
+    const todayKey = new Date().toISOString().split('T')[0]; // تاريخ اليوم (مثال: 2026-11-16)
+    const keysToRemove = [];
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      // استهداف مفاتيح مواقيت الصلاة فقط (للمدن أو الـ GPS)
+      if (key && (key.startsWith('prayer_city_') || key.startsWith('prayer_gps_'))) {
+        // إذا كان المفتاح لا ينتهي بتاريخ اليوم، نضيفه لقائمة الحذف
+        if (!key.endsWith(`_${todayKey}`)) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+
+    // حذف المفاتيح القديمة
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch (error) {
+    console.error('خطأ أثناء تنظيف ذاكرة التخزين المؤقت:', error);
+  }
+};
+// دالة مساعدة لجلب المدينة المحفوظة أو العودة للافتراضي
+const getSavedCity = () =>
+{
+  cleanOldPrayerCache();
+  const defaultCity = {
+    label: "دمشق - سوريا",
+    value: "Damascus, Syria",
+    city: "Damascus",
+    country: "Syria"
+  };
+
+  try {
+    const saved = localStorage.getItem('user_selected_city');
+    return saved ? JSON.parse(saved) : defaultCity;
+  } catch (error) {
+    return defaultCity;
+  }
+};
 
 // 1. دالة جلب البيانات بالمدينة مع التخزين المؤقت (Caching)
 export const fetchPrayerTimes = createAsyncThunk(
@@ -11,7 +52,7 @@ export const fetchPrayerTimes = createAsyncThunk(
     }
 
     try {
-      const todayKey = new Date().toISOString().split('T')[0]; // تاريخ اليوم (مثال: 2026-11-09)
+      const todayKey = new Date().toISOString().split('T')[0];
       const cityName = cityData.value;
       const cacheKey = `prayer_city_${cityName}_${todayKey}`;
 
@@ -35,7 +76,7 @@ export const fetchPrayerTimes = createAsyncThunk(
       return timings;
     } catch (error) {
       return thunkAPI.rejectWithValue({
-        Fajr: "04:45", Sunrise: "06:10", Dhuhr: "12:05", 
+        Fajr: "04:45", Sunrise: "06:10", Dhuhr: "12:05",
         Asr: "15:30", Maghrib: "18:15", Isha: "19:45"
       });
     }
@@ -47,7 +88,6 @@ export const fetchPrayerTimesByCoords = createAsyncThunk(
   'prayer/fetchPrayerTimesByCoords',
   async ({ latitude, longitude }, thunkAPI) => {
     try {
-      // تقريب الإحداثيات لتجنب تكرار التخزين لفروقات دقيقة جداً في المتر الواحد
       const latFixed = Number(latitude).toFixed(2);
       const lngFixed = Number(longitude).toFixed(2);
       const todayKey = new Date().toISOString().split('T')[0];
@@ -87,7 +127,7 @@ export const fetchPrayerTimesByCoords = createAsyncThunk(
 const prayerSlice = createSlice({
   name: 'prayer',
   initialState: {
-    selectedCity: { label: "دمشق - سوريا", value: "Damascus, Syria", city: "Damascus", country: "Syria" },
+    selectedCity: getSavedCity(), // القراءة من التخزين المحلي عند بدء التشغيل
     timings: null,
     loading: false,
     error: null,
@@ -95,6 +135,12 @@ const prayerSlice = createSlice({
   reducers: {
     setSelectedCity: (state, action) => {
       state.selectedCity = action.payload;
+      // حفظ المدينة المختارة (بما في ذلك خيار GPS) في localStorage فوراً
+      try {
+        localStorage.setItem('user_selected_city', JSON.stringify(action.payload));
+      } catch (error) {
+        console.error('تعذر حفظ المدينة في التخزين المحلي:', error);
+      }
     },
   },
   extraReducers: (builder) => {
@@ -122,7 +168,7 @@ const prayerSlice = createSlice({
       })
       .addCase(fetchPrayerTimesByCoords.fulfilled, (state, action) => {
         state.loading = false;
-        state.timings = action.payload.timings; 
+        state.timings = action.payload.timings;
       })
       .addCase(fetchPrayerTimesByCoords.rejected, (state, action) => {
         state.loading = false;
