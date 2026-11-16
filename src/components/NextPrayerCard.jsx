@@ -20,6 +20,14 @@ export default function NextPrayerCard ( { nextPrayerName, nextPrayerTime } )
 
       let difference = prayerDate.getTime() - now.getTime();
 
+      // إذا كان الفرق سالباً بأكثر من 20 دقيقة (مثل الفجر بعد العشاء)، فهذا يعني أن الصلاة في اليوم التالي
+      const twentyMinutesInMs = 20 * 60 * 1000;
+      if ( difference < -twentyMinutesInMs )
+      {
+        prayerDate.setDate( prayerDate.getDate() + 1 );
+        difference = prayerDate.getTime() - now.getTime();
+      }
+
       if ( difference <= 0 )
       {
         const elapsed = Math.abs( difference );
