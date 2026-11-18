@@ -7,6 +7,10 @@
 
 }
 /* الألوان الافتراضية للتطبيق */
+body {
+  background-color: #0B1328;
+  padding-top: env(safe-area-inset-top);
+}
 :root {
   --bg-main: #060c1e;
   --bg-card: #09132d;

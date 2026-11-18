@@ -1,13 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Calendar as CalendarIcon, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, ChevronLeft, ChevronRight, WifiOff } from 'lucide-react';
 import { useSelector } from 'react-redux';
+
+// دالة تنظيف تلقائية لحذف الجداول الشهرية القديمة (الشهور السابقة فقط)
+const cleanOldMonthlyCache = ( currentYear, currentMonth ) =>
+{
+  try
+  {
+    const keysToRemove = [];
+    for ( let i = 0; i < localStorage.length; i++ )
+    {
+      const key = localStorage.key( i );
+      if ( key && key.startsWith( 'monthly_prayer_' ) )
+      {
+        // الصيغة: monthly_prayer_CITY_YEAR_MONTH
+        const parts = key.split( '_' );
+        const cachedMonth = Number( parts[ parts.length - 1 ] );
+        const cachedYear = Number( parts[ parts.length - 2 ] );
+
+        // حذف الشهور التي تسبق الشهر الحالي
+        if ( cachedYear < currentYear || ( cachedYear === currentYear && cachedMonth < currentMonth ) )
+        {
+          keysToRemove.push( key );
+        }
+      }
+    }
+    keysToRemove.forEach( ( key ) => localStorage.removeItem( key ) );
+  } catch ( error )
+  {
+    console.error( 'خطأ في تنظيف كاش التقويم الشهري:', error );
+  }
+};
 
 export default function MonthlyCalendar ()
 {
   const { selectedCity } = useSelector( ( state ) => state.prayer );
   const [ calendarData, setCalendarData ] = useState( [] );
   const [ loading, setLoading ] = useState( false );
+  const [ offlineError, setOfflineError ] = useState( false );
+
+  // مرجع لصف اليوم الحالي للتمرير التلقائي
+  const todayRowRef = useRef( null );
 
   // تتبع الشهر والسنة الحاليين
   const currentDate = new Date();
@@ -19,20 +53,53 @@ export default function MonthlyCalendar ()
     const fetchMonthlyData = async () =>
     {
       setLoading( true );
+      setOfflineError( false );
+
+      const now = new Date();
+      cleanOldMonthlyCache( now.getFullYear(), now.getMonth() + 1 );
+
+      const cityName = selectedCity.value === 'gps' ? 'Riyadh' : selectedCity.value;
+      const cacheKey = `monthly_prayer_${ cityName }_${ year }_${ month }`;
+
+      // 1. البحث في التخزين المحلي أولاً (يعمل أوفلاين وفوري)
       try
       {
-        const cityName = selectedCity.value === 'gps' ? 'Riyadh' : selectedCity.value;
-        const response = await axios.get( `https://api.aladhan.com/v1/calendarByCity/${ year }/${ month }`, {
-          params: {
-            city: cityName,
-            country: selectedCity.country || 'Saudi Arabia',
-            method: 4
+        const cachedMonth = localStorage.getItem( cacheKey );
+        if ( cachedMonth )
+        {
+          setCalendarData( JSON.parse( cachedMonth ) );
+          setLoading( false );
+          return;
+        }
+      } catch ( e )
+      {
+        console.warn( 'تعذر قراءة الكاش الشهري:', e );
+      }
+
+      // 2. إذا لم يكن مخزناً، جلبه من الـ API وحفظه
+      try
+      {
+        const response = await axios.get(
+          `https://api.aladhan.com/v1/calendarByCity/${ year }/${ month }`,
+          {
+            params: {
+              city: cityName,
+              country: selectedCity.country || 'Saudi Arabia',
+              method: 4,
+            },
           }
-        } );
-        setCalendarData( response.data.data );
+        );
+
+        const data = response.data.data;
+        setCalendarData( data );
+
+        // حفظ الجدول الشهري في localStorage
+        localStorage.setItem( cacheKey, JSON.stringify( data ) );
       } catch ( error )
       {
-        console.error( "خطأ في جلب التقويم الشهري:", error );
+        console.error( 'خطأ في جلب التقويم الشهري:', error );
+        setOfflineError( true );
+        setCalendarData( [] );
       } finally
       {
         setLoading( false );
@@ -42,16 +109,33 @@ export default function MonthlyCalendar ()
     fetchMonthlyData();
   }, [ selectedCity, month, year ] );
 
+  // التمرير التلقائي لصف اليوم الحالي بمجرد جاهزية البيانات
+  useEffect( () =>
+  {
+    if ( !loading && calendarData.length > 0 && todayRowRef.current )
+    {
+      const timer = setTimeout( () =>
+      {
+        todayRowRef.current?.scrollIntoView( {
+          behavior: 'smooth',
+          block: 'center',
+        } );
+      }, 100 );
+
+      return () => clearTimeout( timer );
+    }
+  }, [ loading, calendarData ] );
+
   // التنقل بين الشهور
   const handlePrevMonth = () =>
   {
     if ( month === 1 )
     {
       setMonth( 12 );
-      setYear( prev => prev - 1 );
+      setYear( ( prev ) => prev - 1 );
     } else
     {
-      setMonth( prev => prev - 1 );
+      setMonth( ( prev ) => prev - 1 );
     }
   };
 
@@ -60,21 +144,23 @@ export default function MonthlyCalendar ()
     if ( month === 12 )
     {
       setMonth( 1 );
-      setYear( prev => prev + 1 );
+      setYear( ( prev ) => prev + 1 );
     } else
     {
-      setMonth( prev => prev + 1 );
+      setMonth( ( prev ) => prev + 1 );
     }
   };
 
   const monthNames = [
     'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
   ];
 
   return (
-    <div className="w-full p-6 bg-primary rounded-2xl border border-amber-300/20 text-amber-300 shadow-xl flex flex-col items-center gap-5" dir="rtl">
-
+    <div
+      className="w-full p-6 bg-primary rounded-2xl border border-amber-300/20 text-amber-300 shadow-xl flex flex-col items-center gap-5"
+      dir="rtl"
+    >
       {/* عنوان التقويم والتحكم بالشهور */ }
       <div className="w-full flex items-center justify-between pb-3 border-b border-amber-300/10 flex-wrap gap-3">
         <div className="flex items-center gap-2">
@@ -112,6 +198,12 @@ export default function MonthlyCalendar ()
           <Loader2 className="w-8 h-8 animate-spin text-amber-300" />
           <span className="text-xs text-amber-300/70">جاري تحميل جدول الشهر...</span>
         </div>
+      ) : offlineError ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-2 text-center text-amber-300/70">
+          <WifiOff className="w-8 h-8 text-amber-400/60" />
+          <p className="text-sm font-bold text-amber-300">لا يتوفر اتصال بالإنترنت</p>
+          <p className="text-xs">بيانات هذا الشهر غير مخزنة مسبقاً، يرجى الاتصال بالإنترنت لتحميلها.</p>
+        </div>
       ) : (
         <div className="w-full overflow-x-auto custom-horizontal-scroll">
           <table className="w-full text-center border-collapse min-w-162.5">
@@ -129,12 +221,18 @@ export default function MonthlyCalendar ()
             <tbody className="divide-y divide-amber-300/10 text-xs sm:text-sm">
               { calendarData.map( ( day, index ) =>
               {
-                const isToday = new Date().toDateString() === new Date( day.date.gregorian.date.split( '-' ).reverse().join( '-' ) ).toDateString();
+                const isToday =
+                  new Date().toDateString() ===
+                  new Date( day.date.gregorian.date.split( '-' ).reverse().join( '-' ) ).toDateString();
 
                 return (
                   <tr
                     key={ index }
-                    className={ `transition-colors hover:bg-amber-300/5 ${ isToday ? 'bg-amber-300/15 font-bold' : '' }` }
+                    ref={ isToday ? todayRowRef : null }
+                    className={ `transition-colors hover:bg-amber-300/5 ${ isToday
+                        ? 'bg-amber-300/20 font-bold ring-1 ring-inset ring-amber-400/50'
+                        : ''
+                      }` }
                   >
                     <td className="py-3 px-2 font-medium">
                       <div className="text-amber-300">{ day.date.gregorian.day }</div>
@@ -155,7 +253,6 @@ export default function MonthlyCalendar ()
           </table>
         </div>
       ) }
-
     </div>
   );
 }

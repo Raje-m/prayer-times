@@ -1,31 +1,30 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
+
 // دالة تنظيف تلقائية لحذف مواقيت الأيام السابقة مع الحفاظ على المدينة المختارة
 const cleanOldPrayerCache = () => {
   try {
-    const todayKey = new Date().toISOString().split('T')[0]; // تاريخ اليوم (مثال: 2026-11-16)
+    const todayKey = new Date().toISOString().split('T')[0]; // تاريخ اليوم (مثال: 2026-11-17)
     const keysToRemove = [];
 
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      // استهداف مفاتيح مواقيت الصلاة فقط (للمدن أو الـ GPS)
+      // استهداف مفاتيح مواقيت الصلاة اليومية فقط (للمدن أو الـ GPS)
       if (key && (key.startsWith('prayer_city_') || key.startsWith('prayer_gps_'))) {
-        // إذا كان المفتاح لا ينتهي بتاريخ اليوم، نضيفه لقائمة الحذف
         if (!key.endsWith(`_${todayKey}`)) {
           keysToRemove.push(key);
         }
       }
     }
 
-    // حذف المفاتيح القديمة
     keysToRemove.forEach((key) => localStorage.removeItem(key));
   } catch (error) {
     console.error('خطأ أثناء تنظيف ذاكرة التخزين المؤقت:', error);
   }
 };
+
 // دالة مساعدة لجلب المدينة المحفوظة أو العودة للافتراضي
-const getSavedCity = () =>
-{
+const getSavedCity = () => {
   cleanOldPrayerCache();
   const defaultCity = {
     label: "دمشق - سوريا",
@@ -42,7 +41,7 @@ const getSavedCity = () =>
   }
 };
 
-// 1. دالة جلب البيانات بالمدينة مع التخزين المؤقت (Caching)
+// 1. دالة جلب البيانات بالمدينة مع الربط الذكي بالكاش الشهري (30 يوماً أوفلاين)
 export const fetchPrayerTimes = createAsyncThunk(
   'prayer/fetchPrayerTimes',
   async (cityData, thunkAPI) => {
@@ -52,27 +51,58 @@ export const fetchPrayerTimes = createAsyncThunk(
     }
 
     try {
-      const todayKey = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const todayKey = now.toISOString().split('T')[0];
+      const currentDay = now.getDate();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
       const cityName = cityData.value;
-      const cacheKey = `prayer_city_${cityName}_${todayKey}`;
+      const dailyCacheKey = `prayer_city_${cityName}_${todayKey}`;
+      const monthlyCacheKey = `monthly_prayer_${cityName}_${currentYear}_${currentMonth}`;
 
       // أ. التحقق من وجود البيانات مخزنة محلياً لنفس اليوم
-      const cachedData = localStorage.getItem(cacheKey);
-      if (cachedData) {
-        console.log("تم استرجاع أوقات الصلاة للمدينة من التخزين المؤقت (Cache) بنجاح!");
-        return JSON.parse(cachedData);
+      const cachedDaily = localStorage.getItem(dailyCacheKey);
+      if (cachedDaily) {
+        return JSON.parse(cachedDaily);
       }
 
-      // ب. إذا لم تكن مخزنة، جلبها من الـ API عبر Axios
-      const response = await axios.get(`https://api.aladhan.com/v1/timingsByCity`, {
-        params: { city: cityName, country: cityData.country || 'Saudi Arabia', method: 4 },
-      });
+      // ب. البحث في كاش التقويم الشهري واستخراج مواقيت اليوم منه (يعمل أوفلاين لـ 30 يوماً)
+      const cachedMonthly = localStorage.getItem(monthlyCacheKey);
+      if (cachedMonthly) {
+        const monthArray = JSON.parse(cachedMonthly);
+        const todayEntry = monthArray.find(
+          (item) => Number(item.date.gregorian.day) === currentDay
+        );
 
-      const timings = response.data.data.timings;
+        if (todayEntry && todayEntry.timings) {
+          localStorage.setItem(dailyCacheKey, JSON.stringify(todayEntry.timings));
+          return todayEntry.timings;
+        }
+      }
 
-      // ج. حفظ البيانات الجديدة في LocalStorage
-      localStorage.setItem(cacheKey, JSON.stringify(timings));
+      // ج. إذا لم يتوفر أي كاش محلي، جلب الشهر كاملاً بطلب واحد وتخزينه لـ 30 يوماً
+      const response = await axios.get(
+        `https://api.aladhan.com/v1/calendarByCity/${currentYear}/${currentMonth}`,
+        {
+          params: {
+            city: cityName,
+            country: cityData.country || 'Saudi Arabia',
+            method: 4,
+          },
+        }
+      );
 
+      const monthData = response.data.data;
+      // حفظ جدول الشهر كاملاً في localStorage ليستفيد منه التقويم الشهري والأيام القادمة
+      localStorage.setItem(monthlyCacheKey, JSON.stringify(monthData));
+
+      const todayData = monthData.find(
+        (item) => Number(item.date.gregorian.day) === currentDay
+      );
+      const timings = todayData ? todayData.timings : monthData[0].timings;
+
+      localStorage.setItem(dailyCacheKey, JSON.stringify(timings));
       return timings;
     } catch (error) {
       return thunkAPI.rejectWithValue({
@@ -96,7 +126,6 @@ export const fetchPrayerTimesByCoords = createAsyncThunk(
       // أ. التحقق من وجود البيانات المخزنة للإحداثيات
       const cachedData = localStorage.getItem(cacheKey);
       if (cachedData) {
-        console.log("تم استرجاع أوقات الصلاة للإحداثيات من التخزين المؤقت (Cache) بنجاح!");
         return JSON.parse(cachedData);
       }
 

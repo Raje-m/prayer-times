@@ -42,7 +42,7 @@ export default function CustomAlert ( { isOpen, type = 'info', message, onConfir
           { onConfirm && (
             <button
               onClick={ () => { onConfirm(); onClose(); } }
-              className="flex-1 py-2.5 rounded-xl bg-amber-400 text-[#0B1328] font-bold text-xs sm:text-sm hover:bg-amber-500 transition-colors cursor-pointer shadow-lg"
+              className="flex-1 py-2.5 rounded-xl bg-amber-400 text-primary font-bold text-xs sm:text-sm hover:bg-amber-500 transition-colors cursor-pointer shadow-lg"
             >
               تأكيد
             </button>
